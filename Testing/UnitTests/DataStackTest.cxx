@@ -1,22 +1,25 @@
+// DataStackTest exercises the CLI-internal stack (the public core API
+// has no stack; the stack lives only inside cmesh_cli, backing the parser).
+
 #include "TestHarness.h"
 
-#include "driver/ConvertMeshException.h"
-#include "driver/DataStack.h"
+#include "cli/internal/DataStack.h"
+#include "core/Error.h"
 
+#include <itkImage.h>
 #include <vtkNew.h>
 #include <vtkPolyData.h>
 
-typedef DataStack<float, 3>     Stack;
-typedef DataItem<float, 3>      Item;
-typedef Item::ImageType         ImageType;
+using cmesh::cli::DataStack;
+using cmesh::StackError;
+using cmesh::TypeError;
 
 int main()
 {
-  Stack s;
+  DataStack s;
   CM_CHECK(s.empty());
   CM_CHECK_EQ(s.size(), 0u);
 
-  // Push two distinct polydata items.
   vtkNew<vtkPolyData> pd1;
   vtkNew<vtkPolyData> pd2;
   s.PushMesh(pd1);
@@ -25,29 +28,26 @@ int main()
   CM_CHECK(s.back().IsMesh());
   CM_CHECK_EQ(s.back().mesh.GetPointer(), pd2.GetPointer());
 
-  // Pop as mesh (typed).
   auto popped = s.PopMesh();
   CM_CHECK_EQ(popped.GetPointer(), pd2.GetPointer());
   CM_CHECK_EQ(s.size(), 1u);
 
-  // Push an image and verify type-mismatch catches wrong pop.
+  using ImageType = itk::Image<float, 3>;
   ImageType::Pointer img = ImageType::New();
-  s.PushImage(img);
+  s.PushImage(img.GetPointer());
   CM_CHECK_EQ(s.size(), 2u);
   CM_CHECK(s.back().IsImage());
-  CM_CHECK_THROWS(s.PopMesh(), TypeMismatchException);
+  CM_CHECK_THROWS(s.PopMesh(), TypeError);
 
-  // Typed pop succeeds.
   auto popped_img = s.PopImage();
   CM_CHECK(popped_img.IsNotNull());
   CM_CHECK_EQ(s.size(), 1u);
 
-  // Underflow after clearing.
   s.clear();
   CM_CHECK(s.empty());
-  CM_CHECK_THROWS(s.pop(), StackAccessException);
-  CM_CHECK_THROWS(s.PopMesh(), StackAccessException);
-  CM_CHECK_THROWS(s.back(), StackAccessException);
+  CM_CHECK_THROWS(s.pop(), StackError);
+  CM_CHECK_THROWS(s.PopMesh(), StackError);
+  CM_CHECK_THROWS(s.back(), StackError);
 
   return 0;
 }

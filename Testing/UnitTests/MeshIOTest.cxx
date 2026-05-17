@@ -1,6 +1,6 @@
 #include "TestHarness.h"
 
-#include "io/MeshIO.h"
+#include "core/MeshIO.h"
 
 #include <vtkCellArray.h>
 #include <vtkCubeSource.h>
@@ -35,8 +35,8 @@ static void RoundTrip(const std::string &dir, const std::string &ext)
   auto cube = MakeCube();
   std::string path = dir + "/cube-roundtrip." + ext;
 
-  MeshIO::WritePolyData(cube, path);
-  auto loaded = MeshIO::ReadPolyData(path);
+  cmesh::WritePolyData(cube, path);
+  auto loaded = cmesh::ReadPolyData(path);
 
   CM_CHECK(loaded != nullptr);
   CM_CHECK(loaded->GetNumberOfPoints() > 0);
@@ -47,9 +47,9 @@ int main(int argc, char *argv[])
 {
   std::string dir = (argc > 1) ? argv[1] : ".";
 
-  CM_CHECK_EQ(MeshIO::GetExtension("foo/bar.VTP"), std::string("vtp"));
-  CM_CHECK_EQ(MeshIO::GetExtension("baz.stl"),     std::string("stl"));
-  CM_CHECK_EQ(MeshIO::GetExtension("no_ext"),      std::string(""));
+  CM_CHECK_EQ(cmesh::GetExtension("foo/bar.VTP"), std::string("vtp"));
+  CM_CHECK_EQ(cmesh::GetExtension("baz.stl"),     std::string("stl"));
+  CM_CHECK_EQ(cmesh::GetExtension("no_ext"),      std::string(""));
 
   RoundTrip(dir, "vtp");
   RoundTrip(dir, "vtk");
@@ -61,7 +61,7 @@ int main(int argc, char *argv[])
 
   // Write a dedicated fixture for the CLI round-trip test.
   auto cube = MakeCube();
-  MeshIO::WritePolyData(cube, dir + "/cube.vtp");
+  cmesh::WritePolyData(cube, dir + "/cube.vtp");
 
   std::printf("MeshIOTest passed (fixture dir: %s)\n", dir.c_str());
   return 0;

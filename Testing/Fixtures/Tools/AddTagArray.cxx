@@ -5,7 +5,7 @@
 //
 // Usage: AddTagArray <in.vtk> <out.vtk> <array_name>
 
-#include "io/MeshIO.h"
+#include "core/MeshIO.h"
 
 #include <vtkFloatArray.h>
 #include <vtkNew.h>
@@ -22,7 +22,7 @@ int main(int argc, char *argv[])
     return 1;
   }
 
-  auto mesh = MeshIO::ReadPolyData(argv[1]);
+  auto mesh = cmesh::ReadPolyData(argv[1]);
   vtkNew<vtkFloatArray> arr;
   arr->SetName(argv[3]);
   arr->SetNumberOfComponents(1);
@@ -32,7 +32,7 @@ int main(int argc, char *argv[])
   mesh->GetPointData()->AddArray(arr);
 
   // mesh_merge_arrays uses the legacy ASCII reader; write ASCII to match.
-  MeshIO::WritePolyData(mesh, argv[2], /*binary=*/false);
+  cmesh::WritePolyData(mesh, argv[2], /*binary=*/false);
   std::printf("Tagged %s -> %s with array %s\n", argv[1], argv[2], argv[3]);
   return 0;
 }

@@ -1,9 +1,7 @@
 #include "TestHarness.h"
 
-#include "adapters/ExtractIsoSurface.h"
-#include "driver/ConvertMeshDriver.h"
-#include "io/ImageIO.h"
-#include "io/MeshIO.h"
+#include "core/ExtractIsoSurface.h"
+#include "core/MeshIO.h"
 
 #include <itkImage.h>
 #include <itkImageFileWriter.h>
@@ -13,11 +11,8 @@
 #include <cstdio>
 #include <string>
 
-typedef ConvertMeshDriver<float, 3> Driver;
-typedef itk::Image<float, 3>        ImageType;
+using ImageType = itk::Image<float, 3>;
 
-// Build a centered sphere label image at (cx, cy, cz) with radius r, pixel
-// value 1 inside / 0 outside. Small enough that the test is fast.
 static ImageType::Pointer MakeSphereImage()
 {
   constexpr int N = 32;
@@ -48,7 +43,6 @@ int main(int argc, char *argv[])
   std::string dir = (argc > 1) ? argv[1] : ".";
   auto img = MakeSphereImage();
 
-  // Persist the fixture so the CLI test can consume it.
   std::string img_path = dir + "/sphere.nii.gz";
   itk::ImageFileWriter<ImageType>::Pointer w = itk::ImageFileWriter<ImageType>::New();
   w->SetFileName(img_path);
@@ -56,25 +50,16 @@ int main(int argc, char *argv[])
   w->SetUseCompression(true);
   w->Update();
 
-  // Run the adapter in-process.
-  Driver driver;
-  driver.m_Stack.PushImage(img);
-
-  ExtractIsoSurface<float, 3>::Parameters params;
+  cmesh::IsoSurfaceParams params;
   params.threshold = 0.5;
   params.clean = true;
   params.compute_normals = true;
-  ExtractIsoSurface<float, 3> extract(&driver);
-  extract(params);
+  auto mesh = cmesh::ExtractIsoSurface(img.GetPointer(), params);
 
-  CM_CHECK_EQ(driver.m_Stack.size(), 1u);
-  CM_CHECK(driver.m_Stack.back().IsMesh());
-  auto mesh = driver.m_Stack.back().mesh;
+  CM_CHECK(mesh != nullptr);
   CM_CHECK(mesh->GetNumberOfPoints() > 0);
   CM_CHECK(mesh->GetNumberOfCells()  > 0);
 
-  // The sphere radius is 8 voxels; the extracted mesh should live within
-  // a bounding box of roughly that size.
   double bounds[6];
   mesh->GetBounds(bounds);
   double dx = bounds[1] - bounds[0];
@@ -84,8 +69,7 @@ int main(int argc, char *argv[])
   CM_CHECK(dy > 10.0 && dy < 20.0);
   CM_CHECK(dz > 10.0 && dz < 20.0);
 
-  // Also persist the mesh for the CLI-pipeline test.
-  MeshIO::WritePolyData(mesh, dir + "/sphere-mesh.vtp");
+  cmesh::WritePolyData(mesh, dir + "/sphere-mesh.vtp");
 
   std::printf("IsoSurfaceTest passed: %lld points, %lld cells\n",
               static_cast<long long>(mesh->GetNumberOfPoints()),

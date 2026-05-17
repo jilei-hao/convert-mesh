@@ -1,9 +1,6 @@
 #include "TestHarness.h"
 
-#include "adapters/ExtractIsoSurface.h"
-#include "adapters/RasterizeMesh.h"
-#include "adapters/SampleImageAtMesh.h"
-#include "driver/ConvertMeshDriver.h"
+#include "core/ExtractIsoSurface.h"
 
 #include <itkImage.h>
 #include <itkImageRegionIteratorWithIndex.h>
@@ -18,8 +15,7 @@
 // come out ~`spacing`× too large in X/Y (the "squeezed" output reported
 // on real NIFTI segmentations with anisotropic voxels).
 
-typedef ConvertMeshDriver<float, 3> Driver;
-typedef itk::Image<float, 3>        ImageType;
+using ImageType = itk::Image<float, 3>;
 
 // Sphere of radius 8 *mm* centered at physical (0, 0, 0).
 // Image is 40×40×40 voxels, spacing [2, 2, 1], direction diag(1, 1, -1).
@@ -68,17 +64,13 @@ static ImageType::Pointer MakeAnisoSphere()
 
 int main()
 {
-  Driver d;
-  d.m_Stack.PushImage(MakeAnisoSphere());
+  auto img = MakeAnisoSphere();
 
-  ExtractIsoSurface<float, 3>::Parameters params;
+  cmesh::IsoSurfaceParams params;
   params.threshold = 0.5;
   params.clean = true;
   params.compute_normals = true;
-  ExtractIsoSurface<float, 3> op(&d);
-  op(params);
-
-  auto mesh = d.m_Stack.back().mesh;
+  auto mesh = cmesh::ExtractIsoSurface(img.GetPointer(), params);
   CM_CHECK(mesh->GetNumberOfPoints() > 0);
 
   // Mesh should live around RAS (0, 0, 0) with radius ~8mm.
