@@ -1,7 +1,10 @@
-#include "driver/ConvertMeshDriver.h"
+#include "cli/Run.h"
+
+#include <iostream>
 
 int main(int argc, char *argv[])
 {
-  ConvertMeshDriver<float, 3> driver;
-  return driver.ProcessCommandLine(argc, argv);
+  if(argc < 2)
+    return cmesh::cli::Run(0, nullptr, std::cout, std::cerr);
+  return cmesh::cli::Run(argc - 1, argv + 1, std::cout, std::cerr);
 }

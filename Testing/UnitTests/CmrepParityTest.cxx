@@ -9,15 +9,15 @@
 
 #include "TestHarness.h"
 
-#include "adapters/DecimateMesh.h"
-#include "adapters/ExtractIsoSurface.h"
-#include "adapters/MergeArrays.h"
-#include "adapters/RasterizeMesh.h"
-#include "adapters/SampleImageAtMesh.h"
-#include "adapters/SmoothMesh.h"
-#include "driver/ConvertMeshDriver.h"
-#include "io/ImageIO.h"
-#include "io/MeshIO.h"
+#include "core/Backend.h"
+#include "core/DecimateMesh.h"
+#include "core/ExtractIsoSurface.h"
+#include "core/ImageIO.h"
+#include "core/MergeArrays.h"
+#include "core/MeshIO.h"
+#include "core/RasterizeMesh.h"
+#include "core/SampleImageAtMesh.h"
+#include "core/SmoothMesh.h"
 
 #include <itkImage.h>
 #include <itkImageRegionConstIterator.h>
@@ -34,8 +34,7 @@
 #include <cstdio>
 #include <string>
 
-typedef ConvertMeshDriver<float, 3> Driver;
-typedef itk::Image<float, 3>        ImageType;
+using ImageType = itk::Image<float, 3>;
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -133,17 +132,15 @@ static void ExtractIsoSurfaceParity(const std::string &dir)
   // cmesh: ExtractIsoSurface(threshold=0.5, clean=true, compute_normals=true)
   // Both pipelines share vtkMarchingCubes + vtkCleanPolyData so we expect
   // a very tight match.
-  Driver d;
-  d.m_Stack.PushImage(ImageIO<float, 3>::Read(dir + "/sphere.nii.gz"));
+  auto img = cmesh::ReadImageAs<float>(dir + "/sphere.nii.gz");
 
-  ExtractIsoSurface<float, 3>::Parameters p;
+  cmesh::IsoSurfaceParams p;
   p.threshold = 0.5;
   p.clean = true;
   p.compute_normals = true;
-  ExtractIsoSurface<float, 3> op(&d); op(p);
-  auto cmesh_mesh = d.m_Stack.PopMesh();
+  auto cmesh_mesh = cmesh::ExtractIsoSurface(img.GetPointer(), p);
 
-  auto cmrep_mesh = MeshIO::ReadPolyData(dir + "/sphere-mesh.vtk");
+  auto cmrep_mesh = cmesh::ReadPolyData(dir + "/sphere-mesh.vtk");
 
   double mean = 0.0, rms = 0.0;
   double haus = SymmetricHausdorff(cmesh_mesh, cmrep_mesh);
@@ -165,18 +162,15 @@ static void SampleImageParity(const std::string &dir)
   // cmrep: mesh_image_sample -i 1 sphere-mesh.vtk sphere.nii.gz
   //                          sphere-sampled.vtk Intensity
   // cmesh: SampleImageAtMesh(array_name="Intensity") with linear interp
-  Driver d;
-  auto mesh = MeshIO::ReadPolyData(dir + "/sphere-mesh.vtk");
-  d.m_Stack.PushMesh(mesh);
-  d.m_Stack.PushImage(ImageIO<float, 3>::Read(dir + "/sphere.nii.gz"));
+  auto mesh = cmesh::ReadPolyData(dir + "/sphere-mesh.vtk");
+  auto img  = cmesh::ReadImageAs<float>(dir + "/sphere.nii.gz");
 
-  SampleImageAtMesh<float, 3>::Parameters p;
-  p.array_name = "Intensity";
-  d.m_Interpolation = "linear";
-  SampleImageAtMesh<float, 3> op(&d); op(p);
-  auto cmesh_mesh = d.m_Stack.PopMesh();
+  cmesh::SampleParams p;
+  p.array_name    = "Intensity";
+  p.interpolation = cmesh::Interpolation::Linear;
+  auto cmesh_mesh = cmesh::SampleImageAtMesh(mesh, img.GetPointer(), p);
 
-  auto cmrep_mesh = MeshIO::ReadPolyData(dir + "/sphere-sampled.vtk");
+  auto cmrep_mesh = cmesh::ReadPolyData(dir + "/sphere-sampled.vtk");
 
   auto a_cmesh = cmesh_mesh->GetPointData()->GetArray("Intensity");
   auto a_cmrep = cmrep_mesh->GetPointData()->GetArray("Intensity");
@@ -210,16 +204,15 @@ static void RasterizeParity(const std::string &dir)
   // compare them by the physical volume of the rasterized solid, plus
   // confirm cmesh's output is a faithful rasterization of the original
   // sphere image (Dice on the same grid).
-  Driver d;
-  d.m_Stack.PushMesh(MeshIO::ReadPolyData(dir + "/sphere-mesh.vtk"));
+  auto mesh = cmesh::ReadPolyData(dir + "/sphere-mesh.vtk");
+  auto ref  = cmesh::ReadImageAs<float>(dir + "/sphere.nii.gz");
 
-  RasterizeMesh<float, 3>::Parameters p;
-  p.reference = dir + "/sphere.nii.gz";
-  RasterizeMesh<float, 3> op(&d); op(p);
-  auto cmesh_img = d.m_Stack.PopImage();
+  cmesh::RasterizeParams<float> p;
+  p.reference = ref.GetPointer();
+  auto cmesh_img = cmesh::RasterizeMesh<float>(mesh, p);
 
-  auto cmrep_img   = ImageIO<float, 3>::Read(dir + "/sphere-rasterized.nii.gz");
-  auto sphere_img  = ImageIO<float, 3>::Read(dir + "/sphere.nii.gz");
+  auto cmrep_img   = cmesh::ReadImageAs<float>(dir + "/sphere-rasterized.nii.gz");
+  auto sphere_img  = cmesh::ReadImageAs<float>(dir + "/sphere.nii.gz");
 
   double dice_self = Dice(cmesh_img, sphere_img);
   double v_cmesh   = InsideVolume(cmesh_img);
@@ -247,16 +240,14 @@ static void MergeArraysParity(const std::string &dir)
 {
   // cmrep: mesh_merge_arrays -r sphere-mesh.vtk sphere-merged.vtk Tag sphere-tagged.vtk
   // cmesh: MergeArrays(source=sphere-tagged.vtk, name="Tag")
-  Driver d;
-  d.m_Stack.PushMesh(MeshIO::ReadPolyData(dir + "/sphere-mesh.vtk"));
+  auto dest   = cmesh::ReadPolyData(dir + "/sphere-mesh.vtk");
+  auto source = cmesh::ReadPolyData(dir + "/sphere-tagged.vtk");
 
-  MergeArrays<float, 3>::Parameters p;
-  p.source_mesh = dir + "/sphere-tagged.vtk";
-  p.array_name  = "Tag";
-  MergeArrays<float, 3> op(&d); op(p);
-  auto cmesh_mesh = d.m_Stack.PopMesh();
+  cmesh::MergeArraysParams p;
+  p.array_name = "Tag";
+  auto cmesh_mesh = cmesh::MergeArrays(dest, source, p);
 
-  auto cmrep_mesh = MeshIO::ReadPolyData(dir + "/sphere-merged.vtk");
+  auto cmrep_mesh = cmesh::ReadPolyData(dir + "/sphere-merged.vtk");
 
   auto a_cmesh = cmesh_mesh->GetPointData()->GetArray("Tag");
   auto a_cmrep = cmrep_mesh->GetPointData()->GetArray("Tag");
@@ -283,15 +274,13 @@ static void SmoothMeshParity(const std::string &dir)
   // cmesh: SmoothMesh (VTK Laplacian) — different algorithm, so we apply a
   // generous tolerance. Both shrink/relax a sphere and should still trace
   // out essentially the same surface.
-  Driver d;
-  d.m_Stack.PushMesh(MeshIO::ReadPolyData(dir + "/sphere-mesh.vtk"));
-  SmoothMesh<float, 3>::Parameters p;
+  auto in = cmesh::ReadPolyData(dir + "/sphere-mesh.vtk");
+  cmesh::SmoothParams p;
   p.iterations = 50;
   p.relaxation_factor = 0.1;
-  SmoothMesh<float, 3> op(&d); op(p);
-  auto cmesh_mesh = d.m_Stack.PopMesh();
+  auto cmesh_mesh = cmesh::SmoothMesh(in, p);
 
-  auto cmrep_mesh = MeshIO::ReadPolyData(dir + "/sphere-smoothed-vcg.vtk");
+  auto cmrep_mesh = cmesh::ReadPolyData(dir + "/sphere-smoothed-vcg.vtk");
 
   double mean = 0.0, rms = 0.0;
   double haus = SymmetricHausdorff(cmesh_mesh, cmrep_mesh);
@@ -318,15 +307,13 @@ static void DecimateMeshParity(const std::string &dir)
 
   // ----- VTK backend: keep the loose ballpark check we used before -----
   {
-    Driver d;
-    d.m_Stack.PushMesh(MeshIO::ReadPolyData(dir + "/sphere-mesh.vtk"));
-    DecimateMesh<float, 3>::Parameters p;
+    auto in = cmesh::ReadPolyData(dir + "/sphere-mesh.vtk");
+    cmesh::DecimateParams p;
     p.reduction = 0.5;
     p.preserve_topology = true;
-    DecimateMesh<float, 3> op(&d); op(p);
-    auto cmesh_mesh = d.m_Stack.PopMesh();
+    auto cmesh_mesh = cmesh::DecimateMesh(in, p);
 
-    auto cmrep_mesh = MeshIO::ReadPolyData(dir + "/sphere-decimated-vcg.vtk");
+    auto cmrep_mesh = cmesh::ReadPolyData(dir + "/sphere-decimated-vcg.vtk");
 
     double haus = SymmetricHausdorff(cmesh_mesh, cmrep_mesh);
     double mean = 0.0, rms = 0.0;
@@ -345,16 +332,14 @@ static void DecimateMeshParity(const std::string &dir)
 #ifdef CONVERTMESH_HAVE_VCG
   // ----- VCG backend: should match cmrep to floating-point precision -----
   {
-    Driver d;
-    d.m_Backend = "vcg";
-    d.m_Stack.PushMesh(MeshIO::ReadPolyData(dir + "/sphere-mesh.vtk"));
-    DecimateMesh<float, 3>::Parameters p;
+    auto in = cmesh::ReadPolyData(dir + "/sphere-mesh.vtk");
+    cmesh::DecimateParams p;
     p.reduction = 0.5;
     p.preserve_topology = true;
-    DecimateMesh<float, 3> op(&d); op(p);
-    auto cmesh_mesh = d.m_Stack.PopMesh();
+    p.backend = cmesh::Backend::VCG;
+    auto cmesh_mesh = cmesh::DecimateMesh(in, p);
 
-    auto cmrep_mesh = MeshIO::ReadPolyData(dir + "/sphere-decimated-vcg.vtk");
+    auto cmrep_mesh = cmesh::ReadPolyData(dir + "/sphere-decimated-vcg.vtk");
 
     double haus = SymmetricHausdorff(cmesh_mesh, cmrep_mesh);
     double mean = 0.0, rms = 0.0;

@@ -83,7 +83,7 @@ include(${CMAKE_CURRENT_SOURCE_DIR}/ConvertMeshLibrary.cmake)
 if(CONVERTMESH_BUILD_CLI)
   add_executable(cmesh ConvertMeshMain.cxx)
   target_include_directories(cmesh PRIVATE ${CONVERTMESH_INCLUDE_DIRS})
-  target_link_libraries(cmesh PRIVATE cmesh_driver cmesh_api)
+  target_link_libraries(cmesh PRIVATE cmesh_cli)
 endif()
 
 # ---------------------------------------------------------------------------
@@ -96,10 +96,15 @@ if(NOT CONVERTMESH_BUILD_AS_SUBPROJECT AND CONVERTMESH_INSTALL_CLI)
   set(INC_INSTALL_PATH ${CMAKE_INSTALL_INCLUDEDIR})
 
   install(TARGETS cmesh DESTINATION ${CLI_INSTALL_PATH} COMPONENT Runtime)
-  install(TARGETS cmesh_driver cmesh_api
+  install(TARGETS cmesh_core cmesh_cli
           DESTINATION ${LIB_INSTALL_PATH}
           EXPORT ConvertMeshTargets)
-  install(FILES src/api/ConvertMeshAPI.h DESTINATION ${INC_INSTALL_PATH})
+  # Public core headers
+  install(DIRECTORY src/core/
+          DESTINATION ${INC_INSTALL_PATH}/core
+          FILES_MATCHING PATTERN "*.h")
+  # cli/Run.h is the ONLY public header from cmesh_cli
+  install(FILES src/cli/Run.h DESTINATION ${INC_INSTALL_PATH}/cli)
 
   install(EXPORT ConvertMeshTargets
           FILE ConvertMeshTargets.cmake

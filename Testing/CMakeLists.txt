@@ -1,63 +1,59 @@
-# ConvertMesh tests. Uses simple assert-based test executables plus CTest
-# shell scripts against the cmesh binary — matches cmrep's minimal style
-# without pulling in gtest. If a richer harness is desired later, swap in
-# FetchContent(GoogleTest).
+# ConvertMesh tests. Unit tests link the core library directly (the new
+# public API). The CLI end-to-end tests drive the cmesh binary, which
+# itself just calls cmesh::cli::Run.
 
 # -----------------------------------------------------------------------
 # Unit tests
 # -----------------------------------------------------------------------
 add_executable(DataStackTest UnitTests/DataStackTest.cxx)
 target_include_directories(DataStackTest PRIVATE ${CONVERTMESH_INCLUDE_DIRS})
-target_link_libraries(DataStackTest PRIVATE cmesh_driver)
+target_link_libraries(DataStackTest PRIVATE cmesh_cli cmesh_core)
 add_test(NAME DataStackTest COMMAND DataStackTest)
 
 add_executable(MeshIOTest UnitTests/MeshIOTest.cxx)
 target_include_directories(MeshIOTest PRIVATE ${CONVERTMESH_INCLUDE_DIRS})
-target_link_libraries(MeshIOTest PRIVATE cmesh_driver)
+target_link_libraries(MeshIOTest PRIVATE cmesh_core)
 add_test(NAME MeshIOTest COMMAND MeshIOTest ${CMAKE_CURRENT_BINARY_DIR})
 
 add_executable(IsoSurfaceTest UnitTests/IsoSurfaceTest.cxx)
 target_include_directories(IsoSurfaceTest PRIVATE ${CONVERTMESH_INCLUDE_DIRS})
-target_link_libraries(IsoSurfaceTest PRIVATE cmesh_driver)
+target_link_libraries(IsoSurfaceTest PRIVATE cmesh_core)
 add_test(NAME IsoSurfaceTest COMMAND IsoSurfaceTest ${CMAKE_CURRENT_BINARY_DIR})
 
 add_executable(MeshOpsTest UnitTests/MeshOpsTest.cxx)
 target_include_directories(MeshOpsTest PRIVATE ${CONVERTMESH_INCLUDE_DIRS})
-target_link_libraries(MeshOpsTest PRIVATE cmesh_driver)
+target_link_libraries(MeshOpsTest PRIVATE cmesh_core)
 add_test(NAME MeshOpsTest COMMAND MeshOpsTest ${CMAKE_CURRENT_BINARY_DIR})
 
 add_executable(InteropTest UnitTests/InteropTest.cxx)
 target_include_directories(InteropTest PRIVATE ${CONVERTMESH_INCLUDE_DIRS})
-target_link_libraries(InteropTest PRIVATE cmesh_driver)
+target_link_libraries(InteropTest PRIVATE cmesh_core)
 add_test(NAME InteropTest COMMAND InteropTest ${CMAKE_CURRENT_BINARY_DIR})
 
 add_executable(AnisotropicTest UnitTests/AnisotropicTest.cxx)
 target_include_directories(AnisotropicTest PRIVATE ${CONVERTMESH_INCLUDE_DIRS})
-target_link_libraries(AnisotropicTest PRIVATE cmesh_driver)
+target_link_libraries(AnisotropicTest PRIVATE cmesh_core)
 add_test(NAME AnisotropicTest COMMAND AnisotropicTest)
 
 # -----------------------------------------------------------------------
-# Fixture-generator helpers (used by scripts/generate-cmrep-ground-truth.sh
-# to seed the cmrep parity fixtures committed under Testing/Fixtures/)
+# Fixture-generator helpers
 # -----------------------------------------------------------------------
 add_executable(MakeSphereImage Fixtures/Tools/MakeSphereImage.cxx)
 target_include_directories(MakeSphereImage PRIVATE ${CONVERTMESH_INCLUDE_DIRS})
-target_link_libraries(MakeSphereImage PRIVATE cmesh_driver)
+target_link_libraries(MakeSphereImage PRIVATE cmesh_core)
 
 add_executable(AddTagArray Fixtures/Tools/AddTagArray.cxx)
 target_include_directories(AddTagArray PRIVATE ${CONVERTMESH_INCLUDE_DIRS})
-target_link_libraries(AddTagArray PRIVATE cmesh_driver)
+target_link_libraries(AddTagArray PRIVATE cmesh_core)
 
 # -----------------------------------------------------------------------
-# Cmrep parity tests: run cmesh adapters and compare against pre-generated
-# cmrep ground-truth meshes/images in Testing/Fixtures/cmrep-truth/.
-# Skipped automatically when fixtures are missing (fresh clone).
+# Cmrep parity tests
 # -----------------------------------------------------------------------
 set(CMREP_TRUTH_DIR ${CMAKE_CURRENT_SOURCE_DIR}/Fixtures/cmrep-truth)
 if(EXISTS ${CMREP_TRUTH_DIR}/sphere.nii.gz)
   add_executable(CmrepParityTest UnitTests/CmrepParityTest.cxx)
   target_include_directories(CmrepParityTest PRIVATE ${CONVERTMESH_INCLUDE_DIRS})
-  target_link_libraries(CmrepParityTest PRIVATE cmesh_driver)
+  target_link_libraries(CmrepParityTest PRIVATE cmesh_core)
   add_test(NAME CmrepParityTest
            COMMAND CmrepParityTest ${CMREP_TRUTH_DIR})
 else()
@@ -67,7 +63,7 @@ else()
 endif()
 
 # -----------------------------------------------------------------------
-# CLI end-to-end tests (shell scripts driving the cmesh binary)
+# CLI end-to-end tests
 # -----------------------------------------------------------------------
 if(TARGET cmesh)
   add_test(NAME CLIHelp
@@ -78,8 +74,6 @@ if(TARGET cmesh)
   set_tests_properties(CLIVersion PROPERTIES
     PASS_REGULAR_EXPRESSION "cmesh.*version")
 
-  # Mesh round-trip: create -> write VTP -> read it back -> write STL.
-  # Driven by MeshIOTest which creates a small .vtp fixture in its build dir.
   add_test(NAME CLIRoundTrip
            COMMAND ${CMAKE_COMMAND} -E env
              $<TARGET_FILE:cmesh>
@@ -89,7 +83,6 @@ if(TARGET cmesh)
     DEPENDS MeshIOTest
     REQUIRED_FILES ${CMAKE_CURRENT_BINARY_DIR}/cube.vtp)
 
-  # IsoSurface pipeline end-to-end: read image, extract, smooth, decimate, write.
   add_test(NAME CLIIsoSurfacePipeline
            COMMAND ${CMAKE_COMMAND} -E env
              $<TARGET_FILE:cmesh>
@@ -104,7 +97,6 @@ if(TARGET cmesh)
     DEPENDS IsoSurfaceTest
     REQUIRED_FILES ${CMAKE_CURRENT_BINARY_DIR}/sphere.nii.gz)
 
-  # MeshDiff against the unmodified reference — mean distance should be 0.
   add_test(NAME CLIMeshDiffZero
            COMMAND ${CMAKE_COMMAND} -E env
              $<TARGET_FILE:cmesh>
@@ -114,7 +106,6 @@ if(TARGET cmesh)
     DEPENDS MeshIOTest
     PASS_REGULAR_EXPRESSION "mean=0")
 
-  # Rasterize a mesh and write the binary image to disk.
   add_test(NAME CLIRasterize
            COMMAND ${CMAKE_COMMAND} -E env
              $<TARGET_FILE:cmesh>
@@ -123,7 +114,6 @@ if(TARGET cmesh)
              -o ${CMAKE_CURRENT_BINARY_DIR}/sphere-raster.nii.gz)
   set_tests_properties(CLIRasterize PROPERTIES DEPENDS IsoSurfaceTest)
 
-  # Sample an image on a mesh via the stack.
   add_test(NAME CLISampleImage
            COMMAND ${CMAKE_COMMAND} -E env
              $<TARGET_FILE:cmesh>
@@ -133,7 +123,6 @@ if(TARGET cmesh)
              -o ${CMAKE_CURRENT_BINARY_DIR}/sphere-sampled.vtp)
   set_tests_properties(CLISampleImage PROPERTIES DEPENDS IsoSurfaceTest)
 
-  # Warp with the constant translation field from InteropTest.
   add_test(NAME CLIWarpMesh
            COMMAND ${CMAKE_COMMAND} -E env
              $<TARGET_FILE:cmesh>
