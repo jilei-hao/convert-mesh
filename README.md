@@ -195,34 +195,70 @@ cmesh mesh.vtp -push-image labels.nii.gz -int nn -sample-image Label -o mesh-wit
 
 ## Using the C++ library
 
-Link against `cmesh_driver` and `cmesh_api`, then drive the pipeline
-through `ConvertMeshAPI`:
+ConvertMesh exposes two libraries:
+
+- **`cmesh_core`** — the public library: pure mesh/image functions (e.g.
+  `cmesh::ExtractIsoSurface`, `cmesh::ReadImage`, `cmesh::WritePolyData`)
+  that throw `cmesh::Error` on failure. All `core/*.h` headers are public.
+- **`cmesh_cli`** — the CLI parser, stack, and glue. Its only public
+  header is `cli/Run.h`, which runs the same parser the `cmesh` binary
+  uses. Link this if you want bit-identical CLI behavior from your own
+  host (e.g. a Python binding).
+
+### Driving the CLI parser
+
+`cmesh::cli::Run` takes an argv-style token list (without the program
+name) and returns a shell-style exit code:
 
 ```cpp
-#include "api/ConvertMeshAPI.h"
+#include "cli/Run.h"
+#include <sstream>
 
-ConvertMeshAPI<float, 3> api;
+std::ostringstream out, err;
+int rc = cmesh::cli::Run(
+    {"seg.nii.gz", "-extract-isosurface", "0.5", "-clean",
+     "-decimate", "0.5", "-smooth-mesh", "10",
+     "-o", "surface.vtp"},
+    out, err);
 
-// Push an existing itk::Image from memory
-itk::Image<float, 3>::Pointer seg = ...;
-api.PushImage(seg);
+if(rc != 0)
+    std::cerr << "pipeline failed: " << err.str() << std::endl;
+```
 
-// Run the pipeline
-if(!api.Execute("-extract-isosurface 0.5 -clean -decimate 0.5 -smooth-mesh 10"))
+### Calling core functions directly
+
+For in-memory work, skip the parser and call the core functions:
+
+```cpp
+#include "core/ImageIO.h"
+#include "core/ExtractIsoSurface.h"
+#include "core/MeshIO.h"
+
+try
 {
-    std::cerr << "pipeline failed: " << api.GetError() << std::endl;
-    return 1;
-}
+    // Read (or hand in an existing itk::Image)
+    auto image = cmesh::ReadImage("seg.nii.gz");
 
-// Pop the resulting mesh
-vtkSmartPointer<vtkPolyData> mesh = api.PopMesh();
+    cmesh::IsoSurfaceParams p;
+    p.threshold = 0.5;
+    p.clean     = true;
+    p.decimate  = 0.5;
+    vtkSmartPointer<vtkPolyData> mesh =
+        cmesh::ExtractIsoSurface(image.GetPointer(), p);
+
+    cmesh::WritePolyData(mesh, "surface.vtp");
+}
+catch(const cmesh::Error &e)
+{
+    std::cerr << "failed: " << e.what() << std::endl;
+}
 ```
 
 ### As a CMake subproject
 
 ```cmake
 add_subdirectory(external/ConvertMesh)
-target_link_libraries(my_app PRIVATE cmesh_api cmesh_driver)
+target_link_libraries(my_app PRIVATE cmesh_core)   # add cmesh_cli for Run()
 ```
 
 Set `CONVERTMESH_BUILD_AS_SUBPROJECT=ON` in the parent project if ITK
@@ -234,7 +270,8 @@ build the `cmesh` executable inside your build.
 
 ```cmake
 find_package(ConvertMesh REQUIRED)
-target_link_libraries(my_app PRIVATE ConvertMesh::cmesh_api)
+target_link_libraries(my_app PRIVATE ConvertMesh::cmesh_core)
+# Add ConvertMesh::cmesh_cli if you call cmesh::cli::Run.
 ```
 
 
@@ -259,10 +296,15 @@ Current scope (Phase 0–2):
   mesh distance
 - Image/mesh interop: rasterise, warp, sample, merge-arrays
 
+Partially implemented:
+
+- **VCG backend** (`-use-vcg`) — quadric-edge-collapse decimation is
+  wired up (parity with cmrep's `mesh_decimate_vcg`), gated behind the
+  `CONVERTMESH_BUILD_VCG` CMake option. Poisson-disk sampling and other
+  VCG ops are still pending.
+
 On the roadmap (not yet implemented):
 
-- **VCG backend** (`-use-vcg`) — quadric-edge-collapse decimation,
-  Poisson-disk sampling
 - **TetGen backend** — surface → tetrahedral mesh
 - Full coordinate-system-mode support for `-warp-mesh` (ijk / ijkos /
   lps / ras / ants, matching cmrep's `warpmesh`)
