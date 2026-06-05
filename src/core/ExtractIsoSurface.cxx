@@ -9,10 +9,13 @@
 #include <vtkAppendPolyData.h>
 #include <vtkCleanPolyData.h>
 #include <vtkDecimatePro.h>
+#include <vtkDiscreteFlyingEdges3D.h>
 #include <vtkDiscreteMarchingCubes.h>
+#include <vtkFlyingEdges3D.h>
 #include <vtkImageGaussianSmooth.h>
 #include <vtkImageImport.h>
 #include <vtkMarchingCubes.h>
+#include <vtkSurfaceNets3D.h>
 #include <vtkNew.h>
 #include <vtkPointData.h>
 #include <vtkPolyDataNormals.h>
@@ -28,6 +31,110 @@
 
 namespace cmesh
 {
+
+namespace
+{
+
+// --- Iso-contour strategies -------------------------------------------------
+// Each takes a VTK image input port and returns raw polydata; the caller owns
+// the shared post-processing (RAS transform, normals, decimate, clean). The
+// strategy boundary is "image in -> labeled mesh out", which lets each flavor
+// own its own per-label looping and labeling.
+
+// Continuous, single iso-value at `thr`.
+vtkSmartPointer<vtkPolyData>
+ContourMarchingCubes(vtkAlgorithmOutput *in, double thr)
+{
+  vtkNew<vtkMarchingCubes> mc;
+  mc->SetInputConnection(in);
+  mc->ComputeScalarsOff();
+  mc->ComputeGradientsOff();
+  mc->ComputeNormalsOn();
+  mc->SetNumberOfContours(1);
+  mc->SetValue(0, thr);
+  mc->Update();
+  return mc->GetOutput();
+}
+
+vtkSmartPointer<vtkPolyData>
+ContourFlyingEdges(vtkAlgorithmOutput *in, double thr)
+{
+  vtkNew<vtkFlyingEdges3D> fe;
+  fe->SetInputConnection(in);
+  fe->ComputeScalarsOff();
+  fe->ComputeGradientsOff();
+  fe->ComputeNormalsOn();
+  fe->SetNumberOfContours(1);
+  fe->SetValue(0, thr);
+  fe->Update();
+  return fe->GetOutput();
+}
+
+// Per-label: one surface per integer label in [lo, hi], "Label" point scalar.
+vtkSmartPointer<vtkPolyData>
+ContourDiscreteMarchingCubes(vtkAlgorithmOutput *in, double lo, double hi,
+                             AbortToken &abort)
+{
+  vtkNew<vtkAppendPolyData> append;
+  for(double lbl = lo; lbl <= hi; lbl += 1.0)
+  {
+    abort.ThrowIfRequested();
+    vtkNew<vtkDiscreteMarchingCubes> dmc;
+    dmc->SetInputConnection(in);
+    dmc->ComputeGradientsOff();
+    dmc->ComputeScalarsOff();
+    dmc->ComputeNormalsOn();
+    dmc->SetNumberOfContours(1);
+    dmc->SetValue(0, lbl);
+    dmc->Update();
+
+    vtkPolyData *labelMesh = dmc->GetOutput();
+    if(labelMesh->GetNumberOfPoints() == 0) continue;
+
+    vtkNew<vtkUnsignedShortArray> scalar;
+    scalar->SetName("Label");
+    scalar->SetNumberOfComponents(1);
+    scalar->SetNumberOfTuples(labelMesh->GetNumberOfPoints());
+    for(vtkIdType i = 0; i < labelMesh->GetNumberOfPoints(); ++i)
+      scalar->SetTuple1(i, static_cast<unsigned short>(lbl));
+    labelMesh->GetPointData()->SetScalars(scalar);
+    append->AddInputData(labelMesh);
+  }
+  append->Update();
+  return append->GetOutput();
+}
+
+vtkSmartPointer<vtkPolyData>
+ContourDiscreteFlyingEdges(vtkAlgorithmOutput *in, double lo, double hi)
+{
+  int n = static_cast<int>(std::lround(hi - lo)) + 1;
+  vtkNew<vtkDiscreteFlyingEdges3D> dfe;
+  dfe->SetInputConnection(in);
+  dfe->ComputeGradientsOff();
+  dfe->ComputeNormalsOff();
+  dfe->ComputeScalarsOn();
+  dfe->GenerateValues(n, lo, hi);
+  dfe->Update();
+
+  vtkSmartPointer<vtkPolyData> out = dfe->GetOutput();
+  if(out->GetPointData()->GetScalars())
+    out->GetPointData()->GetScalars()->SetName("Label");
+  return out;
+}
+
+vtkSmartPointer<vtkPolyData>
+ContourSurfaceNets(vtkAlgorithmOutput *in, double lo, double hi)
+{
+  int n = static_cast<int>(std::lround(hi - lo)) + 1;
+  vtkNew<vtkSurfaceNets3D> sn;
+  sn->SetInputConnection(in);
+  sn->GenerateValues(n, lo, hi);
+  sn->SetOutputMeshTypeToTriangles();
+  sn->Update();
+  return sn->GetOutput();
+}
+
+} // namespace
 
 template <class T>
 vtkSmartPointer<vtkPolyData>
@@ -58,7 +165,10 @@ ExtractIsoSurface(itk::Image<T, 3> *image, const IsoSurfaceParams &p,
   abort.ThrowIfRequested();
   vtkSmartPointer<vtkPolyData> mesh;
 
-  if(p.multi_label)
+  // Discrete flavors operate per integer label in [lo, hi]; lo is the first
+  // label at or above the threshold, hi the max label present in the image.
+  double lo = 0.0, hi = 0.0;
+  if(IsDiscrete(p.method))
   {
     T imin = std::numeric_limits<T>::max();
     T imax = std::numeric_limits<T>::lowest();
@@ -69,47 +179,27 @@ ExtractIsoSurface(itk::Image<T, 3> *image, const IsoSurfaceParams &p,
       if(buf[i] < imin) imin = buf[i];
       if(buf[i] > imax) imax = buf[i];
     }
-
-    vtkNew<vtkAppendPolyData> append;
-    double start = std::max<double>(p.threshold, static_cast<double>(imin));
-    for(double lbl = std::floor(start); lbl <= static_cast<double>(imax); lbl += 1.0)
-    {
-      abort.ThrowIfRequested();
-      vtkNew<vtkDiscreteMarchingCubes> dmc;
-      dmc->SetInputConnection(mc_input);
-      dmc->ComputeGradientsOff();
-      dmc->ComputeScalarsOff();
-      dmc->ComputeNormalsOn();
-      dmc->SetNumberOfContours(1);
-      dmc->SetValue(0, lbl);
-      dmc->Update();
-
-      vtkPolyData *labelMesh = dmc->GetOutput();
-      if(labelMesh->GetNumberOfPoints() == 0) continue;
-
-      vtkNew<vtkUnsignedShortArray> scalar;
-      scalar->SetName("Label");
-      scalar->SetNumberOfComponents(1);
-      scalar->SetNumberOfTuples(labelMesh->GetNumberOfPoints());
-      for(vtkIdType i = 0; i < labelMesh->GetNumberOfPoints(); ++i)
-        scalar->SetTuple1(i, static_cast<unsigned short>(lbl));
-      labelMesh->GetPointData()->SetScalars(scalar);
-      append->AddInputData(labelMesh);
-    }
-    append->Update();
-    mesh = append->GetOutput();
+    lo = std::floor(std::max<double>(p.threshold, static_cast<double>(imin)));
+    hi = static_cast<double>(imax);
   }
-  else
+
+  switch(p.method)
   {
-    vtkNew<vtkMarchingCubes> mc;
-    mc->SetInputConnection(mc_input);
-    mc->ComputeScalarsOff();
-    mc->ComputeGradientsOff();
-    mc->ComputeNormalsOn();
-    mc->SetNumberOfContours(1);
-    mc->SetValue(0, p.threshold);
-    mc->Update();
-    mesh = mc->GetOutput();
+    case IsoMethod::MarchingCubes:
+      mesh = ContourMarchingCubes(mc_input, p.threshold);
+      break;
+    case IsoMethod::FlyingEdges:
+      mesh = ContourFlyingEdges(mc_input, p.threshold);
+      break;
+    case IsoMethod::DiscreteMarchingCubes:
+      mesh = ContourDiscreteMarchingCubes(mc_input, lo, hi, abort);
+      break;
+    case IsoMethod::DiscreteFlyingEdges:
+      mesh = ContourDiscreteFlyingEdges(mc_input, lo, hi);
+      break;
+    case IsoMethod::SurfaceNets:
+      mesh = ContourSurfaceNets(mc_input, lo, hi);
+      break;
   }
 
   if(!mesh || mesh->GetNumberOfPoints() == 0)

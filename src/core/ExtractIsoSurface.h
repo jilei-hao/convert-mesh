@@ -14,15 +14,44 @@
 namespace cmesh
 {
 
+/**
+ * Iso-contour algorithm flavor. This is the algorithm axis, orthogonal to
+ * Backend (which selects the implementation library). All flavors are VTK.
+ *
+ *   MarchingCubes / FlyingEdges   single iso-value at `threshold` (continuous).
+ *   Discrete* / SurfaceNets       one surface per integer label >= `threshold`
+ *                                 (label images); each output point carries a
+ *                                 "Label" scalar.
+ *
+ * FlyingEdges is a faster, parallel drop-in for MarchingCubes; likewise
+ * DiscreteFlyingEdges for DiscreteMarchingCubes. SurfaceNets is parallel and
+ * applies its own constrained smoothing.
+ */
+enum class IsoMethod
+{
+  MarchingCubes,
+  FlyingEdges,
+  DiscreteMarchingCubes,
+  DiscreteFlyingEdges,
+  SurfaceNets
+};
+
+inline bool IsDiscrete(IsoMethod m)
+{
+  return m == IsoMethod::DiscreteMarchingCubes
+      || m == IsoMethod::DiscreteFlyingEdges
+      || m == IsoMethod::SurfaceNets;
+}
+
 struct IsoSurfaceParams
 {
-  double  threshold       = 0.5;
-  bool    multi_label     = false;
-  double  smooth_pre      = 0.0;   // Gaussian std-dev in voxels
-  double  decimate        = 0.0;   // 0 disables
-  bool    clean           = false;
-  bool    compute_normals = true;
-  Backend backend         = Backend::VTK;
+  double    threshold       = 0.5;
+  IsoMethod method          = IsoMethod::MarchingCubes;
+  double    smooth_pre      = 0.0;   // Gaussian std-dev in voxels
+  double    decimate        = 0.0;   // 0 disables
+  bool      clean           = false;
+  bool      compute_normals = true;
+  Backend   backend         = Backend::VTK;
 };
 
 /**

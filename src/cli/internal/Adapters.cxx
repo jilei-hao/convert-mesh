@@ -30,6 +30,16 @@ namespace cmesh
 namespace cli
 {
 
+namespace
+{
+// In-command options use a double dash (e.g. --clean) so they are never
+// confused with top-level commands (single dash, e.g. -decimate).
+bool IsSubOption(const char *tok)
+{
+  return tok && tok[0] == '-' && tok[1] == '-';
+}
+} // namespace
+
 // ---------------------------------------------------------------------------
 // I/O
 // ---------------------------------------------------------------------------
@@ -175,7 +185,7 @@ int CmdComputeNormals(Driver &d, int argc, const char *const *argv)
 {
   cmesh::NormalsParams p;
   int consumed = 0;
-  if(argc >= 2 && std::string(argv[1]) == "-auto-orient")
+  if(argc >= 2 && std::string(argv[1]) == "--auto-orient")
   {
     p.auto_orient = true;
     consumed = 1;
@@ -225,17 +235,28 @@ int CmdExtractIsoSurface(Driver &d, int argc, const char *const *argv)
   while(consumed + 1 < argc)
   {
     std::string sub = argv[consumed + 1];
-    if(sub == "-multi-label") { p.multi_label = true; consumed += 1; }
-    else if(sub == "-clean")  { p.clean = true; consumed += 1; }
-    else if(sub == "-smooth-pre")
+    if(sub == "--method")
     {
-      if(consumed + 2 >= argc) throw ParseError("-smooth-pre needs a value");
+      if(consumed + 2 >= argc) throw ParseError("--method needs a name");
+      std::string name = argv[consumed + 2];
+      if(name == "marching-cubes")          p.method = cmesh::IsoMethod::MarchingCubes;
+      else if(name == "flying-edges")       p.method = cmesh::IsoMethod::FlyingEdges;
+      else if(name == "discrete-marching-cubes") p.method = cmesh::IsoMethod::DiscreteMarchingCubes;
+      else if(name == "discrete-flying-edges")   p.method = cmesh::IsoMethod::DiscreteFlyingEdges;
+      else if(name == "surface-nets")       p.method = cmesh::IsoMethod::SurfaceNets;
+      else throw ParseError("--method: unknown algorithm '" + name + "'");
+      consumed += 2;
+    }
+    else if(sub == "--clean")  { p.clean = true; consumed += 1; }
+    else if(sub == "--smooth-pre")
+    {
+      if(consumed + 2 >= argc) throw ParseError("--smooth-pre needs a value");
       p.smooth_pre = std::atof(argv[consumed + 2]);
       consumed += 2;
     }
-    else if(sub == "-decimate-post")
+    else if(sub == "--decimate-post")
     {
-      if(consumed + 2 >= argc) throw ParseError("-decimate-post needs a value");
+      if(consumed + 2 >= argc) throw ParseError("--decimate-post needs a value");
       p.decimate = std::atof(argv[consumed + 2]);
       consumed += 2;
     }
@@ -258,32 +279,32 @@ int CmdRasterizeMesh(Driver &d, int argc, const char *const *argv)
   cmesh::RasterizeParams<float> p;
   std::string ref_path;
   int consumed = 0;
-  while(consumed + 1 < argc && argv[consumed + 1][0] == '-')
+  while(consumed + 1 < argc && IsSubOption(argv[consumed + 1]))
   {
     std::string sub = argv[consumed + 1];
-    if(sub == "-ref")
+    if(sub == "--ref")
     {
-      if(consumed + 2 >= argc) throw ParseError("-ref needs a filename");
+      if(consumed + 2 >= argc) throw ParseError("--ref needs a filename");
       ref_path = argv[consumed + 2];
       consumed += 2;
     }
-    else if(sub == "-spacing")
+    else if(sub == "--spacing")
     {
-      if(consumed + 4 >= argc) throw ParseError("-spacing needs sx sy sz");
+      if(consumed + 4 >= argc) throw ParseError("--spacing needs sx sy sz");
       p.spacing[0] = std::atof(argv[consumed + 2]);
       p.spacing[1] = std::atof(argv[consumed + 3]);
       p.spacing[2] = std::atof(argv[consumed + 4]);
       consumed += 4;
     }
-    else if(sub == "-margin")
+    else if(sub == "--margin")
     {
-      if(consumed + 2 >= argc) throw ParseError("-margin needs a value");
+      if(consumed + 2 >= argc) throw ParseError("--margin needs a value");
       p.margin = std::atof(argv[consumed + 2]);
       consumed += 2;
     }
-    else if(sub == "-inside")
+    else if(sub == "--inside")
     {
-      if(consumed + 2 >= argc) throw ParseError("-inside needs a value");
+      if(consumed + 2 >= argc) throw ParseError("--inside needs a value");
       p.inside_value = static_cast<float>(std::atof(argv[consumed + 2]));
       consumed += 2;
     }
@@ -369,13 +390,13 @@ int CmdMergeArrays(Driver &d, int argc, const char *const *argv)
   std::string src_path = argv[1];
   p.array_name = argv[2];
   int consumed = 2;
-  while(consumed + 1 < argc && argv[consumed + 1][0] == '-')
+  while(consumed + 1 < argc && IsSubOption(argv[consumed + 1]))
   {
     std::string sub = argv[consumed + 1];
-    if(sub == "-cell") { p.cell_data = true; consumed += 1; }
-    else if(sub == "-rename")
+    if(sub == "--cell") { p.cell_data = true; consumed += 1; }
+    else if(sub == "--rename")
     {
-      if(consumed + 2 >= argc) throw ParseError("-rename needs a name");
+      if(consumed + 2 >= argc) throw ParseError("--rename needs a name");
       p.rename_to = argv[consumed + 2];
       consumed += 2;
     }

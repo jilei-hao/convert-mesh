@@ -26,15 +26,17 @@ sample the original image intensities onto the surface:
 
 ```sh
 cmesh seg.nii.gz \
-    -extract-isosurface 0.5 -multi-label -clean \
+    -extract-isosurface 0.5 --method discrete-flying-edges --clean \
     -smooth-mesh 10 0.15 \
     -decimate 0.5 \
     -compute-normals \
-    -popas surf \
-    image.nii.gz -push surf \
+    image.nii.gz \
     -sample-image Intensity \
     -o surface.vtp
 ```
+
+(`-sample-image` expects the mesh below the image, so the image is pushed
+last.)
 
 
 ## Installation
@@ -130,10 +132,10 @@ Some flags set modes that persist across subsequent commands:
 
 | Command | Description |
 |---|---|
-| `-extract-isosurface T [modifiers]` | Pop image, push iso-surface at threshold `T`. Modifiers: `-multi-label`, `-clean`, `-smooth-pre SIGMA`, `-decimate-post FRAC` |
+| `-extract-isosurface T [modifiers]` | Pop image, push iso-surface at threshold `T`. Modifiers: `--method NAME`, `--clean`, `--smooth-pre SIGMA`, `--decimate-post FRAC`. `NAME` ∈ {`marching-cubes`, `flying-edges`, `discrete-marching-cubes`, `discrete-flying-edges`, `surface-nets`}. See [src/cli/README.md](src/cli/README.md) |
 | `-smooth-mesh N [RELAX]` | Laplacian smooth (`N` iterations, default relaxation 0.1) |
 | `-decimate FRAC` | Reduce polygon count by `FRAC` ∈ (0, 1) |
-| `-compute-normals [-auto-orient]` | Recompute polydata normals |
+| `-compute-normals [--auto-orient]` | Recompute polydata normals |
 | `-flip-normals` | Reverse triangle winding (array-preserving) |
 | `-meshdiff REF` | Add `Distance` array of top mesh vs. `REF`; prints mean/RMS/Hausdorff |
 
@@ -141,10 +143,10 @@ Some flags set modes that persist across subsequent commands:
 
 | Command | Description |
 |---|---|
-| `-rasterize [-ref REF\|-spacing SX SY SZ] [-margin M] [-inside V]` | Pop mesh, push a binary image covering its interior |
+| `-rasterize [--ref REF\|--spacing SX SY SZ] [--margin M] [--inside V]` | Pop mesh, push a binary image covering its interior |
 | `-warp-mesh WARP` | Displace top mesh by an ITK vector warp field |
 | `-sample-image NAME` | Pop image, annotate the mesh below with a named scalar array sampled via the sticky `-int` mode |
-| `-merge-array SRC NAME [-cell] [-rename NEW]` | Copy named array from source mesh onto top mesh |
+| `-merge-array SRC NAME [--cell] [--rename NEW]` | Copy named array from source mesh onto top mesh |
 
 **Meta**
 
@@ -165,7 +167,7 @@ cmesh mesh.byu -o mesh.ply
 Extract a single iso-surface and write it out:
 
 ```sh
-cmesh label.nii.gz -extract-isosurface 1.5 -clean -o label.vtp
+cmesh label.nii.gz -extract-isosurface 1.5 --clean -o label.vtp
 ```
 
 Compare two meshes and save a distance-annotated version of the first:
@@ -177,7 +179,7 @@ cmesh prediction.vtp -meshdiff truth.vtp -o prediction-with-distance.vtp
 Rasterize a surface into the same voxel grid as a reference image:
 
 ```sh
-cmesh surface.vtp -rasterize -ref reference.nii.gz -o mask.nii.gz
+cmesh surface.vtp -rasterize --ref reference.nii.gz -o mask.nii.gz
 ```
 
 Warp a mesh with a displacement field produced by `greedy`:
@@ -216,7 +218,7 @@ name) and returns a shell-style exit code:
 
 std::ostringstream out, err;
 int rc = cmesh::cli::Run(
-    {"seg.nii.gz", "-extract-isosurface", "0.5", "-clean",
+    {"seg.nii.gz", "-extract-isosurface", "0.5", "--clean",
      "-decimate", "0.5", "-smooth-mesh", "10",
      "-o", "surface.vtp"},
     out, err);

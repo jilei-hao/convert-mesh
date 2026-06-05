@@ -88,7 +88,7 @@ if(TARGET cmesh)
              $<TARGET_FILE:cmesh>
              -verbose
              ${CMAKE_CURRENT_BINARY_DIR}/sphere.nii.gz
-             -extract-isosurface 0.5 -clean
+             -extract-isosurface 0.5 --clean
              -smooth-mesh 3 0.2
              -decimate 0.3
              -compute-normals
@@ -110,7 +110,7 @@ if(TARGET cmesh)
            COMMAND ${CMAKE_COMMAND} -E env
              $<TARGET_FILE:cmesh>
              ${CMAKE_CURRENT_BINARY_DIR}/sphere-mesh.vtp
-             -rasterize -spacing 0.5 0.5 0.5 -margin 1.0
+             -rasterize --spacing 0.5 0.5 0.5 --margin 1.0
              -o ${CMAKE_CURRENT_BINARY_DIR}/sphere-raster.nii.gz)
   set_tests_properties(CLIRasterize PROPERTIES DEPENDS IsoSurfaceTest)
 
