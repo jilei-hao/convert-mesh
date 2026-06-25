@@ -1,5 +1,11 @@
 @PACKAGE_INIT@
 
+# ConvertMesh's exported targets link ITK and VTK publicly, so consumers
+# need both found with the same components ConvertMesh was built against.
+include(CMakeFindDependencyMacro)
+find_dependency(ITK 5.4 COMPONENTS @CONVERTMESH_ITK_COMPONENTS_STR@)
+find_dependency(VTK 9 COMPONENTS @CONVERTMESH_VTK_COMPONENTS_STR@)
+
 set_and_check(ConvertMesh_INCLUDE_DIRS "@PACKAGE_ConvertMesh_INCLUDE_DIRS@")
 
 include("${CMAKE_CURRENT_LIST_DIR}/ConvertMeshTargets.cmake")

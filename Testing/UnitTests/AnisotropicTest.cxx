@@ -1,6 +1,6 @@
 #include "TestHarness.h"
 
-#include "core/ExtractIsoSurface.h"
+#include "cmesh/core/ExtractIsoSurface.h"
 
 #include <itkImage.h>
 #include <itkImageRegionIteratorWithIndex.h>

@@ -99,10 +99,14 @@ Some flags set modes that persist across subsequent commands:
 | `-use-vtk` (default) | Prefer VTK-backed implementations |
 | `-use-vcg` | Prefer VCG-backed implementations (falls back to VTK if unavailable) |
 | `-use-gpu` | Reserved for future GPU backends |
-| `-int linear\|nn\|bspline` | Interpolation mode for image sampling |
-| `-discard-data` | Allow topology-changing ops that may drop polydata arrays |
+| `-int linear\|nn\|bspline` | Interpolation mode for image sampling (unknown modes are an error) |
+| `-discard-data` | Acknowledge that subsequent ops may drop polydata arrays; suppresses dropped-array warnings |
 | `-verbose` | Print per-operation progress |
 | `-no-warn` | Silence data-loss warnings |
+
+Operations that drop point/cell data arrays (e.g. `-decimate` discarding a
+cell array) print a warning naming the lost arrays unless `-discard-data`
+or `-no-warn` is in effect.
 
 ### Command reference
 
@@ -132,12 +136,12 @@ Some flags set modes that persist across subsequent commands:
 
 | Command | Description |
 |---|---|
-| `-extract-isosurface T [modifiers]` | Pop image, push iso-surface at threshold `T`. Modifiers: `--method NAME`, `--clean`, `--smooth-pre SIGMA`, `--decimate-post FRAC`. `NAME` ∈ {`marching-cubes`, `flying-edges`, `discrete-marching-cubes`, `discrete-flying-edges`, `surface-nets`}. See [src/cli/README.md](src/cli/README.md) |
+| `-extract-isosurface T [modifiers]` | Pop image, push iso-surface at threshold `T`. Modifiers: `--method NAME`, `--clean`, `--smooth-pre SIGMA` (continuous methods only), `--decimate-post FRAC`. `NAME` ∈ {`marching-cubes`, `flying-edges`, `discrete-marching-cubes`, `discrete-flying-edges`, `surface-nets`}. See [src/cmesh/cli/README.md](src/cmesh/cli/README.md) |
 | `-smooth-mesh N [RELAX]` | Laplacian smooth (`N` iterations, default relaxation 0.1) |
 | `-decimate FRAC` | Reduce polygon count by `FRAC` ∈ (0, 1) |
 | `-compute-normals [--auto-orient]` | Recompute polydata normals |
 | `-flip-normals` | Reverse triangle winding (array-preserving) |
-| `-meshdiff REF` | Add `Distance` array of top mesh vs. `REF`; prints mean/RMS/Hausdorff |
+| `-meshdiff [REF]` | Add `Distance` array of top mesh vs. `REF` (read from file); prints mean/RMS/Hausdorff. With no argument, pops the reference from the stack: `[ ..., source, reference (top) ]` |
 
 **Image / mesh interop**
 
@@ -146,7 +150,7 @@ Some flags set modes that persist across subsequent commands:
 | `-rasterize [--ref REF\|--spacing SX SY SZ] [--margin M] [--inside V]` | Pop mesh, push a binary image covering its interior |
 | `-warp-mesh WARP` | Displace top mesh by an ITK vector warp field |
 | `-sample-image NAME` | Pop image, annotate the mesh below with a named scalar array sampled via the sticky `-int` mode |
-| `-merge-array SRC NAME [--cell] [--rename NEW]` | Copy named array from source mesh onto top mesh |
+| `-merge-array [SRC] NAME [--cell] [--rename NEW]` | Copy named array from source mesh onto top mesh. Without `SRC`, pops the source from the stack: `[ ..., destination, source (top) ]` |
 
 **Meta**
 
@@ -197,15 +201,18 @@ cmesh mesh.vtp -push-image labels.nii.gz -int nn -sample-image Label -o mesh-wit
 
 ## Using the C++ library
 
-ConvertMesh exposes two libraries:
+ConvertMesh exposes two libraries (link them via the namespaced
+`ConvertMesh::cmesh_core` / `ConvertMesh::cmesh_cli` targets, which work
+identically for subproject and installed-package consumers):
 
 - **`cmesh_core`** — the public library: pure mesh/image functions (e.g.
   `cmesh::ExtractIsoSurface`, `cmesh::ReadImage`, `cmesh::WritePolyData`)
-  that throw `cmesh::Error` on failure. All `core/*.h` headers are public.
+  that throw `cmesh::Error` on failure. All `cmesh/core/*.h` headers are
+  public.
 - **`cmesh_cli`** — the CLI parser, stack, and glue. Its only public
-  header is `cli/Run.h`, which runs the same parser the `cmesh` binary
-  uses. Link this if you want bit-identical CLI behavior from your own
-  host (e.g. a Python binding).
+  header is `cmesh/cli/Run.h`, which runs the same parser the `cmesh`
+  binary uses. Link this if you want bit-identical CLI behavior from your
+  own host (e.g. a Python binding).
 
 ### Driving the CLI parser
 
@@ -213,7 +220,7 @@ ConvertMesh exposes two libraries:
 name) and returns a shell-style exit code:
 
 ```cpp
-#include "cli/Run.h"
+#include "cmesh/cli/Run.h"
 #include <sstream>
 
 std::ostringstream out, err;
@@ -227,14 +234,42 @@ if(rc != 0)
     std::cerr << "pipeline failed: " << err.str() << std::endl;
 ```
 
-### Calling core functions directly
+### Sessions: running the CLI on in-memory data
 
-For in-memory work, skip the parser and call the core functions:
+`cmesh::cli::Session` keeps a driver alive across `Run()` calls, so hosts
+(Python bindings, GUIs) can pass meshes and images in memory instead of
+through the filesystem. Seed named variables, reference them with
+`-push NAME`, capture outputs with `-popas NAME`, and read them back:
 
 ```cpp
-#include "core/ImageIO.h"
-#include "core/ExtractIsoSurface.h"
-#include "core/MeshIO.h"
+#include "cmesh/cli/Run.h"
+#include <sstream>
+
+std::ostringstream out, err;
+cmesh::cli::Session session;
+session.SetImageVariable("seg", segImage);   // itk::ImageBase<3>*
+
+int rc = session.Run(
+    {"-push", "seg",
+     "-extract-isosurface", "0.5", "--clean",
+     "-popas", "surf"},
+    out, err);
+
+if(rc == 0)
+{
+    vtkSmartPointer<vtkPolyData> surf = session.GetMeshVariable("surf");
+    // ... variables, the stack, and sticky flags persist for the next Run()
+}
+```
+
+### Calling core functions directly
+
+For typed in-memory work, skip the parser and call the core functions:
+
+```cpp
+#include "cmesh/core/ImageIO.h"
+#include "cmesh/core/ExtractIsoSurface.h"
+#include "cmesh/core/MeshIO.h"
 
 try
 {
@@ -260,7 +295,8 @@ catch(const cmesh::Error &e)
 
 ```cmake
 add_subdirectory(external/ConvertMesh)
-target_link_libraries(my_app PRIVATE cmesh_core)   # add cmesh_cli for Run()
+target_link_libraries(my_app PRIVATE ConvertMesh::cmesh_core)
+# Add ConvertMesh::cmesh_cli if you call cmesh::cli::Run / Session.
 ```
 
 Set `CONVERTMESH_BUILD_AS_SUBPROJECT=ON` in the parent project if ITK
@@ -273,8 +309,15 @@ build the `cmesh` executable inside your build.
 ```cmake
 find_package(ConvertMesh REQUIRED)
 target_link_libraries(my_app PRIVATE ConvertMesh::cmesh_core)
-# Add ConvertMesh::cmesh_cli if you call cmesh::cli::Run.
+# Add ConvertMesh::cmesh_cli if you call cmesh::cli::Run / Session.
 ```
+
+The installed `ConvertMeshConfig.cmake` finds ITK and VTK itself (with the
+exact component lists ConvertMesh was built against) via `find_dependency`,
+so a bare `find_package(ConvertMesh)` is sufficient — you only need
+`ITK_DIR`/`VTK_DIR` hints if they live in non-standard prefixes. The link
+target names are identical in both modes, so downstream CMake does not
+change when switching between subproject and installed-package use.
 
 
 ## Coordinate conventions
@@ -311,7 +354,8 @@ On the roadmap (not yet implemented):
 - Full coordinate-system-mode support for `-warp-mesh` (ijk / ijkos /
   lps / ras / ants, matching cmrep's `warpmesh`)
 - Non-identity direction-cosine reference images in `-rasterize`
-- Python bindings via pybind11
+- Python bindings via pybind11 (the in-memory seam they need —
+  `cmesh::cli::Session` — is in place)
 
 
 ## License

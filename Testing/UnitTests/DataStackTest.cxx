@@ -3,8 +3,8 @@
 
 #include "TestHarness.h"
 
-#include "cli/internal/DataStack.h"
-#include "core/Error.h"
+#include "cmesh/cli/internal/DataStack.h"
+#include "cmesh/core/Error.h"
 
 #include <itkImage.h>
 #include <vtkNew.h>

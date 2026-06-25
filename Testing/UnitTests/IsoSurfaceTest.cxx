@@ -1,7 +1,7 @@
 #include "TestHarness.h"
 
-#include "core/ExtractIsoSurface.h"
-#include "core/MeshIO.h"
+#include "cmesh/core/ExtractIsoSurface.h"
+#include "cmesh/core/MeshIO.h"
 
 #include <itkImage.h>
 #include <itkImageFileWriter.h>

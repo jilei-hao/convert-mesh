@@ -1,6 +1,6 @@
 #include "TestHarness.h"
 
-#include "core/MeshIO.h"
+#include "cmesh/core/MeshIO.h"
 
 #include <vtkCellArray.h>
 #include <vtkCubeSource.h>

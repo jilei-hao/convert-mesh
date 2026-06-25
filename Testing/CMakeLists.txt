@@ -7,32 +7,37 @@
 # -----------------------------------------------------------------------
 add_executable(DataStackTest UnitTests/DataStackTest.cxx)
 target_include_directories(DataStackTest PRIVATE ${CONVERTMESH_INCLUDE_DIRS})
-target_link_libraries(DataStackTest PRIVATE cmesh_cli cmesh_core)
+target_link_libraries(DataStackTest PRIVATE ConvertMesh::cmesh_cli ConvertMesh::cmesh_core)
 add_test(NAME DataStackTest COMMAND DataStackTest)
+
+add_executable(SessionTest UnitTests/SessionTest.cxx)
+target_include_directories(SessionTest PRIVATE ${CONVERTMESH_INCLUDE_DIRS})
+target_link_libraries(SessionTest PRIVATE ConvertMesh::cmesh_cli ConvertMesh::cmesh_core)
+add_test(NAME SessionTest COMMAND SessionTest)
 
 add_executable(MeshIOTest UnitTests/MeshIOTest.cxx)
 target_include_directories(MeshIOTest PRIVATE ${CONVERTMESH_INCLUDE_DIRS})
-target_link_libraries(MeshIOTest PRIVATE cmesh_core)
+target_link_libraries(MeshIOTest PRIVATE ConvertMesh::cmesh_core)
 add_test(NAME MeshIOTest COMMAND MeshIOTest ${CMAKE_CURRENT_BINARY_DIR})
 
 add_executable(IsoSurfaceTest UnitTests/IsoSurfaceTest.cxx)
 target_include_directories(IsoSurfaceTest PRIVATE ${CONVERTMESH_INCLUDE_DIRS})
-target_link_libraries(IsoSurfaceTest PRIVATE cmesh_core)
+target_link_libraries(IsoSurfaceTest PRIVATE ConvertMesh::cmesh_core)
 add_test(NAME IsoSurfaceTest COMMAND IsoSurfaceTest ${CMAKE_CURRENT_BINARY_DIR})
 
 add_executable(MeshOpsTest UnitTests/MeshOpsTest.cxx)
 target_include_directories(MeshOpsTest PRIVATE ${CONVERTMESH_INCLUDE_DIRS})
-target_link_libraries(MeshOpsTest PRIVATE cmesh_core)
+target_link_libraries(MeshOpsTest PRIVATE ConvertMesh::cmesh_core)
 add_test(NAME MeshOpsTest COMMAND MeshOpsTest ${CMAKE_CURRENT_BINARY_DIR})
 
 add_executable(InteropTest UnitTests/InteropTest.cxx)
 target_include_directories(InteropTest PRIVATE ${CONVERTMESH_INCLUDE_DIRS})
-target_link_libraries(InteropTest PRIVATE cmesh_core)
+target_link_libraries(InteropTest PRIVATE ConvertMesh::cmesh_core)
 add_test(NAME InteropTest COMMAND InteropTest ${CMAKE_CURRENT_BINARY_DIR})
 
 add_executable(AnisotropicTest UnitTests/AnisotropicTest.cxx)
 target_include_directories(AnisotropicTest PRIVATE ${CONVERTMESH_INCLUDE_DIRS})
-target_link_libraries(AnisotropicTest PRIVATE cmesh_core)
+target_link_libraries(AnisotropicTest PRIVATE ConvertMesh::cmesh_core)
 add_test(NAME AnisotropicTest COMMAND AnisotropicTest)
 
 # -----------------------------------------------------------------------
@@ -40,11 +45,11 @@ add_test(NAME AnisotropicTest COMMAND AnisotropicTest)
 # -----------------------------------------------------------------------
 add_executable(MakeSphereImage Fixtures/Tools/MakeSphereImage.cxx)
 target_include_directories(MakeSphereImage PRIVATE ${CONVERTMESH_INCLUDE_DIRS})
-target_link_libraries(MakeSphereImage PRIVATE cmesh_core)
+target_link_libraries(MakeSphereImage PRIVATE ConvertMesh::cmesh_core)
 
 add_executable(AddTagArray Fixtures/Tools/AddTagArray.cxx)
 target_include_directories(AddTagArray PRIVATE ${CONVERTMESH_INCLUDE_DIRS})
-target_link_libraries(AddTagArray PRIVATE cmesh_core)
+target_link_libraries(AddTagArray PRIVATE ConvertMesh::cmesh_core)
 
 # -----------------------------------------------------------------------
 # Cmrep parity tests
@@ -53,7 +58,7 @@ set(CMREP_TRUTH_DIR ${CMAKE_CURRENT_SOURCE_DIR}/Fixtures/cmrep-truth)
 if(EXISTS ${CMREP_TRUTH_DIR}/sphere.nii.gz)
   add_executable(CmrepParityTest UnitTests/CmrepParityTest.cxx)
   target_include_directories(CmrepParityTest PRIVATE ${CONVERTMESH_INCLUDE_DIRS})
-  target_link_libraries(CmrepParityTest PRIVATE cmesh_core)
+  target_link_libraries(CmrepParityTest PRIVATE ConvertMesh::cmesh_core)
   add_test(NAME CmrepParityTest
            COMMAND CmrepParityTest ${CMREP_TRUTH_DIR})
 else()

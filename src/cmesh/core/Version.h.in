@@ -1,0 +1,12 @@
+#ifndef CONVERTMESH_CORE_VERSION_H
+#define CONVERTMESH_CORE_VERSION_H
+
+// Generated from Version.h.in by CMake — the single source of truth is the
+// VERSION argument of project() in the top-level CMakeLists.txt.
+
+#define CONVERTMESH_VERSION_MAJOR @CONVERTMESH_VERSION_MAJOR@
+#define CONVERTMESH_VERSION_MINOR @CONVERTMESH_VERSION_MINOR@
+#define CONVERTMESH_VERSION_PATCH @CONVERTMESH_VERSION_PATCH@
+#define CONVERTMESH_VERSION_FULL "@CONVERTMESH_VERSION_FULL@"
+
+#endif

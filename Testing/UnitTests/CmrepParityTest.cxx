@@ -9,15 +9,15 @@
 
 #include "TestHarness.h"
 
-#include "core/Backend.h"
-#include "core/DecimateMesh.h"
-#include "core/ExtractIsoSurface.h"
-#include "core/ImageIO.h"
-#include "core/MergeArrays.h"
-#include "core/MeshIO.h"
-#include "core/RasterizeMesh.h"
-#include "core/SampleImageAtMesh.h"
-#include "core/SmoothMesh.h"
+#include "cmesh/core/Backend.h"
+#include "cmesh/core/DecimateMesh.h"
+#include "cmesh/core/ExtractIsoSurface.h"
+#include "cmesh/core/ImageIO.h"
+#include "cmesh/core/MergeArrays.h"
+#include "cmesh/core/MeshIO.h"
+#include "cmesh/core/RasterizeMesh.h"
+#include "cmesh/core/SampleImageAtMesh.h"
+#include "cmesh/core/SmoothMesh.h"
 
 #include <itkImage.h>
 #include <itkImageRegionConstIterator.h>

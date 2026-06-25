@@ -112,8 +112,9 @@ cmesh -verbose seg.nii.gz -extract-isosurface 0.5 -decimate 0.5 -o out.vtp
 -no-warn
 ```
 
-Silence data-loss warnings (e.g. arrays dropped by a topology-changing
-operation). Errors are still reported.
+Silence data-loss warnings: the dropped-array warnings described under
+`-discard-data`, and `-warp-mesh`'s out-of-extent vertex warning. Errors
+are still reported.
 
 ### `-discard-data`
 
@@ -121,9 +122,11 @@ operation). Errors are still reported.
 -discard-data
 ```
 
-Allow operations that may drop `vtkPolyData` arrays to proceed. Without it,
-operations that would lose point/cell data on a mesh that carries arrays are
-blocked to protect you from silent data loss.
+Acknowledge that subsequent operations may drop `vtkPolyData` arrays.
+When an operation's output is missing point/cell data arrays that its
+input carried (e.g. `-decimate` discarding a cell array), `cmesh` prints
+a warning naming the lost arrays; `-discard-data` declares the loss
+intentional and suppresses those warnings.
 
 ```sh
 cmesh annotated.vtp -discard-data -decimate 0.5 -o light.vtp
@@ -163,6 +166,10 @@ cmesh a.vtp -decimate 0.5 -use-vcg -decimate 0.5   # first VTK, then VCG
 | `linear` *(default)* | — | Continuous intensity images. |
 | `nn` | `nearest`, `nearestneighbor` | Label maps / segmentations. |
 | `bspline` | — | Smooth higher-order resampling. |
+
+Any other `MODE` is a parse error. (More generally, numeric arguments are
+validated strictly throughout: a token that is not entirely a number, e.g.
+`-decimate abc`, is a parse error rather than a silent zero.)
 
 ```sh
 cmesh surf.vtp labels.nii.gz -int nn -sample-image LabelID -o out.vtp
@@ -349,8 +356,11 @@ treat the image as a label map and extract one surface per label ≥ `T`.
 | `T` *(required)* | — | Iso-value / threshold. For discrete methods, one surface is generated per integer label ≥ `T`. |
 | `--method NAME` | `marching-cubes` | Iso-contour algorithm; see table below. |
 | `--clean` | off | Triangulate and merge coincident points (drops degenerate cells). |
-| `--smooth-pre SIGMA` | `0` (off) | Gaussian pre-smoothing of the image, std-dev in voxels. |
+| `--smooth-pre SIGMA` | `0` (off) | Gaussian pre-smoothing of the image, std-dev in voxels. **Continuous methods only** — combining it with a discrete method is a parse error, because smoothing a label map blends adjacent labels into spurious intermediate values. Smooth the extracted mesh with `-smooth-mesh` instead. |
 | `--decimate-post FRAC` | `0` (off) | Reduce polygon count by `FRAC` (0..1) after extraction. |
+
+Unknown `--options` after the threshold are an error attributed to
+`-extract-isosurface` (this holds for every command that takes `--options`).
 
 **`--method` values:**
 
@@ -363,12 +373,13 @@ treat the image as a label map and extract one surface per label ≥ `T`.
 | `surface-nets` | `vtkSurfaceNets3D` | Parallel label-boundary nets with built-in constrained smoothing; carries native `BoundaryLabels` cell data. |
 
 ```sh
-# Single iso-surface from a probability map, cleaned.
-cmesh prob.nii.gz -extract-isosurface 0.5 --clean -o surf.vtp
+# Single iso-surface from a probability map, cleaned and pre-smoothed.
+cmesh prob.nii.gz -extract-isosurface 0.5 --clean --smooth-pre 1.0 -o surf.vtp
 
-# Per-label surfaces from a multi-label segmentation, with pre-smoothing.
+# Per-label surfaces from a multi-label segmentation, smoothed afterwards.
 cmesh seg.nii.gz \
-    -extract-isosurface 1 --method discrete-flying-edges --smooth-pre 1.0 \
+    -extract-isosurface 1 --method discrete-flying-edges \
+    -smooth-mesh 10 0.15 \
     -o labels.vtp
 
 # Smooth surface nets, then reduce triangle count.
@@ -388,7 +399,7 @@ Laplacian-smooths the top mesh. Pops a mesh, pushes the smoothed mesh.
 | Argument | Default | Description |
 |----------|---------|-------------|
 | `N` *(required)* | — | Number of smoothing iterations. |
-| `RELAX` *(optional)* | `0.1` | Relaxation factor per iteration. Omit it (or follow `N` with another `-command`) to use the default. |
+| `RELAX` *(optional)* | `0.1` | Relaxation factor per iteration. The token after `N` is taken as `RELAX` only if it parses as a number, so a following `-command` or filename is never consumed by mistake. |
 
 Internal defaults not exposed on the CLI: feature angle `45°`, boundary
 smoothing on, feature-edge smoothing off.
@@ -456,19 +467,36 @@ cmesh surf.vtp -flip-normals -o flipped.vtp
 ### `-meshdiff`
 
 ```
--meshdiff REF
+-meshdiff [REF]
 ```
 
-Compute the point-wise distance from the top mesh to a reference mesh `REF` (read
-from file). Adds a `Distance` point-data array to the top mesh and prints summary
-statistics — N, mean, RMS, and directed Hausdorff (source→reference) — to stdout.
-Pops the source mesh, pushes the annotated mesh.
+Compute the point-wise distance from a source mesh to a reference mesh. Adds a
+`Distance` point-data array to the source and prints summary statistics — N,
+mean, RMS, and directed Hausdorff (source→reference) — to stdout.
+
+Two forms:
+
+- **File form** — `-meshdiff REF`: the reference is read from file `REF`; the
+  source is popped from the stack.
+- **Stack form** — `-meshdiff` with no argument (i.e. followed by another
+  `-command` or end of line): the reference is popped from the stack too, with
+  layout `[ ..., source, reference (top) ]`. Use this to diff against a mesh
+  you just computed without writing it to disk.
+
+Both forms push the annotated source mesh.
 
 ```sh
 cmesh candidate.vtp -meshdiff ground_truth.vtp -o annotated.vtp
 # prints: MeshDiff: ground_truth.vtp
 #           N=... mean=... rms=... hausdorff(source->ref)=...
+
+# Stack form: compare a decimated copy against the original, no temp files.
+cmesh dense.vtp -dup -decimate 0.9 -swap -meshdiff -o decimated_vs_dense.vtp
 ```
+
+> A filename immediately after `-meshdiff` is always interpreted as the file
+> form; with the stack form, push any further operands after the command
+> instead.
 
 ---
 
@@ -542,17 +570,27 @@ cmesh surf.vtp labels.nii.gz -int nn -sample-image LabelID -o sampled.vtp
 Aliases: `-merge-array`, `-merge-arrays`.
 
 ```
--merge-array SRC NAME [--cell] [--rename NEW]
+-merge-array [SRC] NAME [--cell] [--rename NEW]
 ```
 
-Copy a named data array from a source mesh `SRC` (read from file) onto the
-**top** mesh of the stack. Pops the destination mesh, pushes the result. By
+Copy a named data array from a source mesh onto a destination mesh. By
 default the array is treated as point data; the source and destination are
 expected to be in correspondence (same point/cell ordering).
 
+Two forms, disambiguated by whether the first argument has a recognized mesh
+extension:
+
+- **File form** — `-merge-array SRC NAME`: the source is read from file
+  `SRC`; the destination is popped from the stack.
+- **Stack form** — `-merge-array NAME`: the source is popped from the stack
+  too, with layout `[ ..., destination, source (top) ]`.
+
+Both forms push the merged destination mesh. (An array name that itself ends
+in a mesh extension needs the file form.)
+
 | Argument / Option | Default | Description |
 |-------------------|---------|-------------|
-| `SRC` *(required)* | — | Source mesh filename to read the array from. |
+| `SRC` *(optional)* | stack | Source mesh filename to read the array from. |
 | `NAME` *(required)* | — | Name of the array to copy. |
 | `--cell` | off | Treat `NAME` as a **cell**-data array (default is point data). |
 | `--rename NEW` | keep `NAME` | Rename the copied array to `NEW` on the destination. |
@@ -563,6 +601,9 @@ cmesh subject.vtp -merge-array atlas.vtp Thickness -o merged.vtp
 
 # Copy a cell array and rename it.
 cmesh subject.vtp -merge-array atlas.vtp RegionID --cell --rename Parcellation -o merged.vtp
+
+# Stack form: source pushed on top of the destination.
+cmesh subject.vtp atlas.vtp -merge-array Thickness -o merged.vtp
 ```
 
 ---

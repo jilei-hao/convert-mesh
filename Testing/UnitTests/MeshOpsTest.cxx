@@ -1,11 +1,11 @@
 #include "TestHarness.h"
 
-#include "core/ComputeNormals.h"
-#include "core/DecimateMesh.h"
-#include "core/FlipNormals.h"
-#include "core/MeshDiff.h"
-#include "core/MeshIO.h"
-#include "core/SmoothMesh.h"
+#include "cmesh/core/ComputeNormals.h"
+#include "cmesh/core/DecimateMesh.h"
+#include "cmesh/core/FlipNormals.h"
+#include "cmesh/core/MeshDiff.h"
+#include "cmesh/core/MeshIO.h"
+#include "cmesh/core/SmoothMesh.h"
 
 #include <vtkCellArray.h>
 #include <vtkCellArrayIterator.h>

@@ -1,11 +1,11 @@
 #include "TestHarness.h"
 
-#include "core/ExtractIsoSurface.h"
-#include "core/MergeArrays.h"
-#include "core/MeshIO.h"
-#include "core/RasterizeMesh.h"
-#include "core/SampleImageAtMesh.h"
-#include "core/WarpMesh.h"
+#include "cmesh/core/ExtractIsoSurface.h"
+#include "cmesh/core/MergeArrays.h"
+#include "cmesh/core/MeshIO.h"
+#include "cmesh/core/RasterizeMesh.h"
+#include "cmesh/core/SampleImageAtMesh.h"
+#include "cmesh/core/WarpMesh.h"
 
 #include <itkImage.h>
 #include <itkImageFileWriter.h>

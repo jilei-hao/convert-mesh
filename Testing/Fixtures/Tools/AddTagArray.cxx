@@ -5,7 +5,7 @@
 //
 // Usage: AddTagArray <in.vtk> <out.vtk> <array_name>
 
-#include "core/MeshIO.h"
+#include "cmesh/core/MeshIO.h"
 
 #include <vtkFloatArray.h>
 #include <vtkNew.h>

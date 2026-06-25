@@ -1,20 +1,56 @@
 cmake_minimum_required(VERSION 3.15)
-if(COMMAND cmake_policy)
-  cmake_policy(SET CMP0003 NEW)
-  cmake_policy(SET CMP0077 NEW)
-endif()
+cmake_policy(SET CMP0077 NEW)
 
-project(ConvertMesh)
+project(ConvertMesh VERSION 0.1.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# Versioning
-set(CONVERTMESH_VERSION_MAJOR 0)
-set(CONVERTMESH_VERSION_MINOR 1)
-set(CONVERTMESH_VERSION_PATCH 0)
-set(CONVERTMESH_VERSION_FULL
-    "${CONVERTMESH_VERSION_MAJOR}.${CONVERTMESH_VERSION_MINOR}.${CONVERTMESH_VERSION_PATCH}")
+# Versioning — derived from project(VERSION); Version.h is configured from
+# these in ConvertMeshLibrary.cmake.
+set(CONVERTMESH_VERSION_MAJOR ${PROJECT_VERSION_MAJOR})
+set(CONVERTMESH_VERSION_MINOR ${PROJECT_VERSION_MINOR})
+set(CONVERTMESH_VERSION_PATCH ${PROJECT_VERSION_PATCH})
+set(CONVERTMESH_VERSION_FULL  ${PROJECT_VERSION})
+
+# ---------------------------------------------------------------------------
+# Dependency component lists — single source of truth, reused by the
+# standalone find_package calls below and by the installed package config
+# (find_dependency in Config.cmake.in).
+# ---------------------------------------------------------------------------
+set(CONVERTMESH_ITK_COMPONENTS
+  ITKCommon
+  ITKIOImageBase
+  ITKIONIFTI
+  ITKIONRRD
+  ITKIOGIPL
+  ITKIOMeta
+  ITKIOPNG
+  ITKIOJPEG
+  ITKIOTIFF
+  ITKIOVTK
+  ITKImageGrid
+  ITKTransform
+  ITKVTK)
+
+set(CONVERTMESH_VTK_COMPONENTS
+  CommonCore
+  CommonDataModel
+  CommonExecutionModel
+  CommonTransforms
+  FiltersCore
+  FiltersGeneral
+  FiltersGeometry
+  FiltersModeling
+  FiltersSources
+  IOGeometry
+  IOImage
+  IOLegacy
+  IOPLY
+  IOXML
+  ImagingCore
+  ImagingGeneral
+  ImagingStencil)
 
 # ---------------------------------------------------------------------------
 # Build-as-subproject support (mirrors c3d / cmrep conventions)
@@ -29,40 +65,10 @@ option(CONVERTMESH_BUILD_TESTING "Build the ConvertMesh test suite" ON)
 
 if(NOT CONVERTMESH_BUILD_AS_SUBPROJECT)
   # Top-level build: find ITK + VTK ourselves
-  find_package(ITK REQUIRED COMPONENTS
-    ITKCommon
-    ITKIOImageBase
-    ITKIONIFTI
-    ITKIONRRD
-    ITKIOGIPL
-    ITKIOMeta
-    ITKIOPNG
-    ITKIOJPEG
-    ITKIOTIFF
-    ITKIOVTK
-    ITKImageGrid
-    ITKTransform
-    ITKVTK)
+  find_package(ITK 5.4 REQUIRED COMPONENTS ${CONVERTMESH_ITK_COMPONENTS})
   include(${ITK_USE_FILE})
 
-  find_package(VTK 9 REQUIRED COMPONENTS
-    CommonCore
-    CommonDataModel
-    CommonExecutionModel
-    CommonTransforms
-    FiltersCore
-    FiltersGeneral
-    FiltersGeometry
-    FiltersModeling
-    FiltersSources
-    IOGeometry
-    IOImage
-    IOLegacy
-    IOPLY
-    IOXML
-    ImagingCore
-    ImagingGeneral
-    ImagingStencil)
+  find_package(VTK 9 REQUIRED COMPONENTS ${CONVERTMESH_VTK_COMPONENTS})
 
   set(CONVERTMESH_BUILD_CLI ON)
   set(CONVERTMESH_INSTALL_CLI ON)
@@ -83,7 +89,10 @@ include(${CMAKE_CURRENT_SOURCE_DIR}/ConvertMeshLibrary.cmake)
 if(CONVERTMESH_BUILD_CLI)
   add_executable(cmesh ConvertMeshMain.cxx)
   target_include_directories(cmesh PRIVATE ${CONVERTMESH_INCLUDE_DIRS})
-  target_link_libraries(cmesh PRIVATE cmesh_cli)
+  target_link_libraries(cmesh PRIVATE ConvertMesh::cmesh_cli)
+  if(COMMAND vtk_module_autoinit)
+    vtk_module_autoinit(TARGETS cmesh MODULES ${VTK_LIBRARIES})
+  endif()
 endif()
 
 # ---------------------------------------------------------------------------
@@ -99,12 +108,15 @@ if(NOT CONVERTMESH_BUILD_AS_SUBPROJECT AND CONVERTMESH_INSTALL_CLI)
   install(TARGETS cmesh_core cmesh_cli
           DESTINATION ${LIB_INSTALL_PATH}
           EXPORT ConvertMeshTargets)
-  # Public core headers
-  install(DIRECTORY src/core/
-          DESTINATION ${INC_INSTALL_PATH}/core
+  # Public core headers, installed under a cmesh/ prefix so downstream
+  # include paths are namespaced: #include "cmesh/core/MeshIO.h"
+  install(DIRECTORY src/cmesh/core/
+          DESTINATION ${INC_INSTALL_PATH}/cmesh/core
           FILES_MATCHING PATTERN "*.h")
+  install(FILES ${CMAKE_CURRENT_BINARY_DIR}/generated/cmesh/core/Version.h
+          DESTINATION ${INC_INSTALL_PATH}/cmesh/core)
   # cli/Run.h is the ONLY public header from cmesh_cli
-  install(FILES src/cli/Run.h DESTINATION ${INC_INSTALL_PATH}/cli)
+  install(FILES src/cmesh/cli/Run.h DESTINATION ${INC_INSTALL_PATH}/cmesh/cli)
 
   install(EXPORT ConvertMeshTargets
           FILE ConvertMeshTargets.cmake
@@ -113,6 +125,9 @@ if(NOT CONVERTMESH_BUILD_AS_SUBPROJECT AND CONVERTMESH_INSTALL_CLI)
 
   include(CMakePackageConfigHelpers)
   set(ConvertMesh_INCLUDE_DIRS "include")
+  # find_dependency in Config.cmake.in needs space-separated component lists
+  string(REPLACE ";" " " CONVERTMESH_ITK_COMPONENTS_STR "${CONVERTMESH_ITK_COMPONENTS}")
+  string(REPLACE ";" " " CONVERTMESH_VTK_COMPONENTS_STR "${CONVERTMESH_VTK_COMPONENTS}")
   configure_package_config_file(
     ${CMAKE_CURRENT_SOURCE_DIR}/Config.cmake.in
     "${CMAKE_CURRENT_BINARY_DIR}/ConvertMeshConfig.cmake"
